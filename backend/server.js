@@ -4,6 +4,8 @@ import cors from "cors";
 import morgan from "morgan";
 import helmet from "helmet";
 import errorHandler from "./middleware/errorHandler.js";
+import connectDB from "./config/db/index.js";
+import cookieParser from "cookie-parser";
 
 const app = express();
 dotenv.config();
@@ -13,7 +15,10 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(morgan("dev"));
 app.use(helmet());
+app.use(cookieParser());
 app.use(errorHandler);
+
+connectDB();
 
 const PORT = process.env.PORT;
 
