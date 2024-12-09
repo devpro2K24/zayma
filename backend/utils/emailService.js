@@ -1,6 +1,6 @@
-import createTransporter from "../config/mailer";
 import crypto from "crypto";
-import User from "../models/userModel";
+import User from "../models/userModel.js";
+import createTransporter from "../config/mailer/mailer.js";
 
 export const sendVerificationEmail = async (email, userId) => {
   try {
@@ -28,12 +28,12 @@ export const sendVerificationEmail = async (email, userId) => {
 
     // Options pour l'email
     const mailOptions = {
-      from: process.env.SMTP_EMAIL,
+      from: process.env.EMAIL_USER,
       to: email,
       subject: "Vérification de votre compte",
       text: `Bonjour, 
         Veuillez cliquer sur ce lien pour valider votre compte : 
-        ${process.env.CLIENT_URL}/verify/${verifyToken}`,
+        ${process.env.BASE_URL}/verify/${verifyToken}`,
     };
 
     // Envoi de l'email
