@@ -28,6 +28,11 @@ const userSchema = new mongoose.Schema(
       minlength: [6, "Le mot de passe doit contenir au moins 6 caractères"],
       select: false, // Exclut le mot de passe des requêtes par défaut
     },
+    role: {
+      type: String,
+      enum: ["buyer", "seller", "delivery"], // Définition des rôles possibles
+      default: "buyer", // Rôle par défaut
+    },
     isVerified: {
       type: Boolean,
       default: false,
