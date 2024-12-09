@@ -5,7 +5,8 @@ import { sendVerificationEmail } from "../utils/emailService.js";
 import bcrypt from "bcryptjs";
 
 const registerUser = asyncHandler(async (req, res) => {
-  const { firstName, lastName, email, password, role } = req.body;
+  const { firstName, lastName, email, password, role, gender, country } =
+    req.body;
   const ipAddress = req.ip;
   // Validation des champs obligatoires
   if (!firstName || !lastName || !email || !password || !role) {
@@ -28,6 +29,8 @@ const registerUser = asyncHandler(async (req, res) => {
     password,
     role,
     ipAddress,
+    gender,
+    country,
   });
 
   // Sauvegarde de l'utilisateur AVANT d'envoyer l'email
@@ -50,6 +53,8 @@ const registerUser = asyncHandler(async (req, res) => {
     lastName: newUser.lastName,
     email: newUser.email,
     role: newUser.role,
+    gender: newUser.gender,
+    country: newUser.country,
   });
 });
 
@@ -99,21 +104,18 @@ const logoutUser = asyncHandler(async (req, res) => {
 const getUserProfile = asyncHandler(async (req, res) => {
   if (!req.user) {
     res.status(401);
-    throw new Error("User not found");
+    throw new Error("Unauthorized");
   }
 
-  const user = await User.findById({
-    where: { _id: req.user._id },
-    select: {
-      id: true,
-      firstName: true,
-      lastName: true,
-      email: true,
-      role: true,
-      emailVerified: true,
-      lastLogin: true,
-      createdAt: true,
-    },
+  const user = await User.findById(req.user._id, {
+    id: true,
+    firstName: true,
+    lastName: true,
+    email: true,
+    role: true,
+    emailVerified: true,
+    lastLogin: true,
+    createdAt: true,
   });
   if (user) {
     res.status(200).json(user);
@@ -130,13 +132,120 @@ const updateUserProfile = asyncHandler(async (req, res) => {
   }
 
   const user = await User.findById(req.user._id);
-
   if (!user) {
     res.status(404);
     throw new Error("User not found");
   }
 
-  // const { firstName, }
+  const { firstName, lastName, email, password, gender, country } = req.body;
+
+  console.log("Données reçues :", req.body);
+
+  // Validation de l'email pour vérifier qu'il n'est pas déjà utilisé
+  if (email && email !== user.email) {
+    const emailExists = await User.findOne({ email });
+    if (emailExists) {
+      res.status(400);
+      throw new Error("Cet email est déjà utilisé par un autre utilisateur.");
+    }
+  }
+
+  // Mise à jour des champs dynamiquement
+  if (firstName) user.firstName = firstName;
+  if (lastName) user.lastName = lastName;
+  if (email) user.email = email;
+  if (password) {
+    const salt = await bcrypt.genSalt(10);
+    user.password = await bcrypt.hash(password, salt);
+  }
+  if (gender) {
+    const allowedGenders = ["male", "female", "other"];
+    if (!allowedGenders.includes(gender)) {
+      res.status(400);
+      throw new Error(
+        "Genre invalide. Les valeurs acceptées sont: male, female, other."
+      );
+    }
+    user.gender = gender;
+  }
+  if (country) user.country = country;
+
+  // Sauvegarde
+  try {
+    console.log("Avant sauvegarde :", user);
+    const updatedUser = await user.save();
+    console.log("Après sauvegarde :", updatedUser);
+
+    res.status(200).json({
+      _id: updatedUser._id,
+      firstName: updatedUser.firstName,
+      lastName: updatedUser.lastName,
+      email: updatedUser.email,
+      gender: updatedUser.gender,
+      country: updatedUser.country,
+      role: updatedUser.role,
+    });
+  } catch (error) {
+    console.error("Erreur lors de la mise à jour :", error);
+    res
+      .status(500)
+      .json({ message: "Erreur lors de la mise à jour du profil" });
+  }
 });
 
-export { registerUser, loginUser, logoutUser, getUserProfile };
+const deleteAccountUser = asyncHandler(async (req, res) => {
+  if (!req.user) {
+    res.status(401);
+    throw new Error("Not authorized");
+  }
+  const user = User.findOneAndDelete(req.user._id);
+  res.cookie("jwt", "", {
+    httpOnly: true,
+    expires: new Date(0),
+  });
+  res.status(200).json({ message: "Account deleted" });
+});
+
+const getAllUsers = asyncHandler(async (req, res) => {
+  const users = await User.find().select("-password");
+  res.status(200).json(users);
+});
+
+// ADMIN
+
+const deleteUserById = asyncHandler(async (req, res) => {
+  const user = await User.findById(req.params.id);
+  if (user) {
+    if (user.isAdmin) {
+      res.status(404);
+      throw new Error("Admin cannot be delected");
+    }
+    await User.deleteMany({ _id: user._id });
+    res.status(200).json({ message: "user removed" });
+  } else {
+    res.status(404);
+    throw new Error("User not found");
+  }
+});
+
+const getUserById = asyncHandler(async (req, res) => {
+  const user = await User.findById(req.params.id).select("-password");
+  if (user) {
+    res.status(200).json(user);
+  } else {
+    res.status(404);
+    throw new Error("User not found");
+  }
+});
+
+export {
+  registerUser,
+  loginUser,
+  logoutUser,
+  getUserProfile,
+  deleteAccountUser,
+  getAllUsers,
+  updateUserProfile,
+  deleteUserById,
+  getUserById,
+};

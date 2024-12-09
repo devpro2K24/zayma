@@ -1,6 +1,7 @@
 import jwt from "jsonwebtoken";
+import User from "../models/userModel.js";
 
-const authenticate = (req, res, next) => {
+const authenticate = async (req, res, next) => {
   let token;
 
   token = req.cookies?.jwt;
@@ -12,7 +13,7 @@ const authenticate = (req, res, next) => {
   if (token) {
     try {
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
-      req.user = decoded;
+      req.user = await User.findById(decoded.userId).select("-password");
       next();
     } catch (error) {
       console.log("JWT Verification Failed:", error.message);

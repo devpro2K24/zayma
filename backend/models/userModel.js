@@ -30,6 +30,11 @@ const userSchema = new mongoose.Schema(
     },
     ipAddress: { type: String },
     country: { type: String },
+    gender: {
+      type: String,
+      enum: ["male", "female", "other"],
+      required: false,
+    },
     role: {
       type: String,
       enum: ["buyer", "seller", "delivery"], // Définition des rôles possibles
