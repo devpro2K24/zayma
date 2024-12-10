@@ -31,6 +31,7 @@ const registerUser = asyncHandler(async (req, res) => {
     ipAddress,
     gender,
     country,
+    isVerified: false,
   });
 
   // Sauvegarde de l'utilisateur AVANT d'envoyer l'email
@@ -39,6 +40,7 @@ const registerUser = asyncHandler(async (req, res) => {
   // Envoi de l'email de vérification APRÈS avoir sauvegardé l'utilisateur
   try {
     await sendVerificationEmail(newUser.email, newUser._id);
+    res.status(201).json({ message: "Email envoyé" });
     console.log("Email envoyé");
   } catch (error) {
     console.error("Erreur d'envoi d'email:", error);
@@ -72,6 +74,15 @@ const loginUser = asyncHandler(async (req, res) => {
   if (!userExist) {
     res.status(401); // Unauthorized
     throw new Error("Identifiants invalides");
+  }
+
+  if (userExist.isVerified === false) {
+    res
+      .status(401)
+      .send("Account not verified yet ! Please verify your account to login");
+    console.log(
+      "Account not verified yet ! Please verify your account to login"
+    );
   }
 
   // Vérification du mot de passe
@@ -113,7 +124,7 @@ const getUserProfile = asyncHandler(async (req, res) => {
     lastName: true,
     email: true,
     role: true,
-    emailVerified: true,
+    isVerified: true,
     lastLogin: true,
     createdAt: true,
   });
@@ -211,6 +222,24 @@ const getAllUsers = asyncHandler(async (req, res) => {
   res.status(200).json(users);
 });
 
+const verifyEmail = asyncHandler(async (req, res) => {
+  const { userId } = req.params;
+
+  const user = await User.findById(userId);
+  if (!user) {
+    res.status(404);
+    throw new Error("User not found");
+  } else {
+    if (user.isVerified) {
+      res.status(400).json({ message: "Email already verified" });
+    } else {
+      user.isVerified = true;
+      await user.save();
+      res.status(200).json({ message: "Email verified successfully" });
+    }
+  }
+});
+
 // ADMIN
 
 const deleteUserById = asyncHandler(async (req, res) => {
@@ -248,4 +277,5 @@ export {
   updateUserProfile,
   deleteUserById,
   getUserById,
+  verifyEmail,
 };

@@ -9,6 +9,7 @@ import {
   logoutUser,
   registerUser,
   updateUserProfile,
+  verifyEmail,
 } from "../controllers/userController.js";
 import { authenticate, isAdmin } from "../middleware/authMiddleware.js";
 
@@ -16,6 +17,7 @@ const router = express.Router();
 
 router.post("/register", registerUser);
 router.post("/login", loginUser);
+router.get("/verify-email/:userId", verifyEmail);
 
 // protected routes
 router.post("/logout", authenticate, logoutUser);
