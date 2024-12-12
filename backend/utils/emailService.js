@@ -2,13 +2,20 @@ import crypto from "crypto";
 import User from "../models/userModel.js";
 import createTransporter from "../config/mailer/mailer.js";
 
-export const sendVerificationEmail = async (email, userId) => {
+export const sendVerificationEmail = async (emailData) => {
   try {
+    const { to: email, userId } = emailData;
+
+    // Vérification des paramètres obligatoires
+    if (!email || !userId) {
+      throw new Error("Email et userId sont requis.");
+    }
+
     const transporter = await createTransporter();
 
     // Génération du token de vérification
     const verifyToken = crypto.randomBytes(20).toString("hex");
-    const verifyTokenExpire = Date.now() + 10 * 60 * 1000;
+    const verifyTokenExpire = Date.now() + 24 * 60 * 60 * 1000; // 24 heures
 
     // Mise à jour du token dans la base de données
     const user = await User.findByIdAndUpdate(
@@ -16,8 +23,9 @@ export const sendVerificationEmail = async (email, userId) => {
       {
         verifyToken,
         verifyTokenExpire,
+        isVerified: false,
       },
-      { new: true } // Retourne le document mis à jour
+      { new: true }
     );
 
     if (!user) {
@@ -30,7 +38,7 @@ export const sendVerificationEmail = async (email, userId) => {
     const mailOptions = {
       from: `"Zayma" <${process.env.EMAIL_USER}>`,
       to: email,
-      subject: "Vérification de votre compte",
+      subject: "Vérification de votre compte Zayma",
       html: `
     <!DOCTYPE html>
     <html lang="fr">
@@ -115,13 +123,19 @@ export const sendVerificationEmail = async (email, userId) => {
     };
 
     // Envoi de l'email
-    await transporter.sendMail(mailOptions);
-    console.log("Email de vérification envoyé avec succès !");
+    const result = await transporter.sendMail(mailOptions);
+
+    console.log("Email de vérification envoyé avec succès !", {
+      messageId: result.messageId,
+      recipient: email,
+    });
+
+    return result;
   } catch (error) {
     console.error(
       "Erreur lors de l'envoi de l'email de vérification:",
       error.message
     );
-    throw new Error("Échec de l'envoi de l'email de vérification.");
+    throw error; // Relancer l'erreur pour une gestion externe
   }
 };
