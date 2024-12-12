@@ -8,17 +8,18 @@ const registerUser = asyncHandler(async (req, res) => {
   const { firstName, lastName, email, password, role, gender, country } =
     req.body;
   const ipAddress = req.ip;
+
   // Validation des champs obligatoires
   if (!firstName || !lastName || !email || !password || !role) {
-    res.status(400);
-    throw new Error("Veuillez remplir tous les champs");
+    return res
+      .status(400)
+      .json({ message: "Veuillez remplir tous les champs" });
   }
 
   // Vérification si l'utilisateur existe déjà
   const userExist = await User.findOne({ email });
   if (userExist) {
-    res.status(400);
-    throw new Error("L'utilisateur existe déjà");
+    return res.status(400).json({ message: "L'utilisateur existe déjà" });
   }
 
   // Création de l'utilisateur
@@ -34,30 +35,32 @@ const registerUser = asyncHandler(async (req, res) => {
     isVerified: false,
   });
 
-  // Sauvegarde de l'utilisateur AVANT d'envoyer l'email
-  await newUser.save();
-
-  // Envoi de l'email de vérification APRÈS avoir sauvegardé l'utilisateur
   try {
-    await sendVerificationEmail(newUser.email, newUser._id);
-    res.status(201).json({ message: "Email envoyé" });
-    console.log("Email envoyé");
-  } catch (error) {
-    console.error("Erreur d'envoi d'email:", error);
-    // Optionnel : Gérer l'erreur d'email sans bloquer l'inscription
-  }
+    // Sauvegarde de l'utilisateur
+    await newUser.save();
 
-  // Génération du token JWT et réponse
-  createToken(res, newUser._id);
-  res.status(201).json({
-    _id: newUser._id,
-    firstName: newUser.firstName,
-    lastName: newUser.lastName,
-    email: newUser.email,
-    role: newUser.role,
-    gender: newUser.gender,
-    country: newUser.country,
-  });
+    // Envoi de l'email de vérification
+    await sendVerificationEmail(newUser.email, newUser._id);
+
+    // Génération du token JWT
+    const token = createToken(res, newUser._id);
+
+    // Réponse unique avec les informations de l'utilisateur
+    return res.status(201).json({
+      _id: newUser._id,
+      firstName: newUser.firstName,
+      lastName: newUser.lastName,
+      email: newUser.email,
+      role: newUser.role,
+      gender: newUser.gender,
+      country: newUser.country,
+      token: token,
+      isVerified: false,
+    });
+  } catch (error) {
+    console.error("Erreur lors de l'inscription:", error);
+    return res.status(500).json({ message: "Erreur lors de l'inscription" });
+  }
 });
 
 const loginUser = asyncHandler(async (req, res) => {
@@ -76,17 +79,16 @@ const loginUser = asyncHandler(async (req, res) => {
     throw new Error("Identifiants invalides");
   }
 
-  if (userExist.isVerified === false) {
-    res
-      .status(401)
-      .send("Account not verified yet ! Please verify your account to login");
-    console.log(
-      "Account not verified yet ! Please verify your account to login"
-    );
+  // Vérification si l'utilisateur est vérifié
+  if (!userExist.isVerified) {
+    res.status(401).json({
+      message: "Account not verified yet! Please verify your account to login",
+    });
+    return; // Stop l'exécution ici
   }
 
   // Vérification du mot de passe
-  const isMatch = await bcrypt.compare(password, userExist.password);
+  const isMatch = await userExist.matchPassword(password); // Utilisation de la méthode du modèle
   if (!isMatch) {
     res.status(401); // Unauthorized
     throw new Error("Identifiants invalides");
@@ -227,17 +229,24 @@ const verifyEmail = asyncHandler(async (req, res) => {
 
   const user = await User.findById(userId);
   if (!user) {
-    res.status(404);
-    throw new Error("User not found");
-  } else {
-    if (user.isVerified) {
-      res.status(400).json({ message: "Email already verified" });
-    } else {
-      user.isVerified = true;
-      await user.save();
-      res.status(200).json({ message: "Email verified successfully" });
-    }
+    return res.status(404).json({ message: "User not found" });
   }
+
+  if (user.isVerified) {
+    return res.status(400).json({ message: "Email already verified" });
+  }
+
+  user.isVerified = true;
+  await user.save();
+
+  res.status(200).json({
+    message: "Email verified successfully",
+    user: {
+      id: user._id,
+      email: user.email,
+      isVerified: true,
+    },
+  });
 });
 
 // ADMIN

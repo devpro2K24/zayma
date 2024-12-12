@@ -19,13 +19,13 @@ app.use(morgan("dev"));
 app.use(helmet());
 app.use(cookieParser());
 
+app.use(errorHandler);
+
 connectDB();
 
 const PORT = process.env.PORT;
 
 app.use("/api/users", userRoutes);
-
-app.use(errorHandler);
 
 app.use((req, res, next) => {
   res.status(200).json({ message: "Bienvenue sur Zayma Ecommerce !" });
