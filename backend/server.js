@@ -8,6 +8,7 @@ import connectDB from "./config/db/index.js";
 import cookieParser from "cookie-parser";
 
 import userRoutes from "./routes/userRoutes.js";
+import notifyUnverifiedUsers from "./cronJobs/notifyUnverifiedUsers.js";
 
 const app = express();
 dotenv.config();
@@ -22,6 +23,7 @@ app.use(cookieParser());
 app.use(errorHandler);
 
 connectDB();
+notifyUnverifiedUsers();
 
 const PORT = process.env.PORT;
 
