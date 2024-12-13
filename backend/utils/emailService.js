@@ -1,6 +1,32 @@
 import crypto from "crypto";
 import User from "../models/userModel.js";
+import { EmailError } from "../models/userModel.js";
 import createTransporter from "../config/mailer/mailer.js";
+
+// fonction pour enregistrer les erreurs d'email
+const logEmailError = async (userId, errorType, errorMessage) => {
+  try {
+    await EmailError.create({
+      userId,
+      errorType,
+      errorMessage,
+    });
+  } catch (logError) {
+    console.error(
+      "Erreur l'ors de l'enregistrement de l'erreur email: ",
+      logError
+    );
+  }
+};
+
+// fonction pour notifier les admins
+const notifyAdmin = async (errorDetails) => {
+  try {
+    console.log("Notification admin:", errorDetails);
+  } catch (error) {
+    console.error("Erreur lors de la notifiaction des admins:", error);
+  }
+};
 
 export const sendVerificationEmail = async (emailData) => {
   try {
@@ -11,28 +37,52 @@ export const sendVerificationEmail = async (emailData) => {
       throw new Error("Email et userId sont requis.");
     }
 
-    const transporter = await createTransporter();
-
-    // Génération du token de vérification
-    const verifyToken = crypto.randomBytes(20).toString("hex");
-    const verifyTokenExpire = Date.now() + 24 * 60 * 60 * 1000; // 24 heures
-
-    // Mise à jour du token dans la base de données
-    const user = await User.findByIdAndUpdate(
-      userId,
-      {
-        verifyToken,
-        verifyTokenExpire,
-        isVerified: false,
-      },
-      { new: true }
-    );
+    // Trouver l'utilisateur
+    const user = await User.findById(userId);
 
     if (!user) {
       throw new Error(
         "Utilisateur non trouvé pour l'envoi de l'email de vérification."
       );
     }
+
+    // Réinitialiser les tentatives si nécessaire
+    // Réinitialiser les tentatives si nécessaire
+    user.resetVerificationAttempts();
+    user.restVerificationProcess(); // Correction ici
+
+    // verifier si l'utilisateur peut s'envoyer un email
+    if (!user.canSendEmail()) {
+      const delayMinutes = user.calculateBackOffDelay();
+      throw new Error(
+        `Veuillez attendre ${delayMinutes} minutes avant de reessayer.`
+      );
+    }
+    // Vérifier le nombre de tentatives
+    if (user.verificationAttempts >= 5) {
+      await notifyAdmin({
+        type: "VERIFICATION_EMAIL_LIMIT_REACHED",
+        userId: user._id,
+        email: user.email,
+      });
+      throw new Error("Nombre maximal de tentatives d'envoi d'email atteint.");
+    }
+
+    const transporter = await createTransporter();
+
+    // Génération du token de vérification
+    const verifyToken = crypto.randomBytes(20).toString("hex");
+    const verifyTokenExpire = Date.now() + 24 * 60 * 60 * 1000; // 24 heures
+
+    // Mise à jour du token et des tentatives dans la base de données
+    await User.findByIdAndUpdate(userId, {
+      verifyToken,
+      verifyTokenExpire,
+      isVerified: false,
+      verificationAttemps: user.verificationAttemps + 1, // Corrected the typo here
+      lastVerificationAttempt: new Date(),
+      emailDelay: user.calculateBackOffDelay(),
+    });
 
     // Options pour l'email
     const mailOptions = {
@@ -122,15 +172,53 @@ export const sendVerificationEmail = async (emailData) => {
   `,
     };
 
-    // Envoi de l'email
-    const result = await transporter.sendMail(mailOptions);
+    // Envoi de l'email avec gestion des erreurs spécifiques
+    try {
+      const result = await transporter.sendMail(mailOptions);
 
-    console.log("Email de vérification envoyé avec succès !", {
-      messageId: result.messageId,
-      recipient: email,
+      console.log("Email de vérification envoyé avec succès !", {
+        messageId: result.messageId,
+        recipient: email,
+      });
+
+      return result;
+    } catch (emailError) {
+      // Gestion des erreurs spécifiques à l'envoi d'email
+      if (emailError.code === "EAUTH") {
+        throw new Error("Erreur d'authentification du serveur email.");
+      } else if (emailError.code === "EENVELOPE") {
+        throw new Error("Adresse email invalide ou boîte de réception pleine.");
+      } else if (emailError.code === "EMESSAGE") {
+        throw new Error("Erreur lors de la construction du message email.");
+      } else if (emailError.code === "ECONNECTION") {
+        throw new Error("Problème de connexion au serveur email.");
+      } else {
+        throw new Error(`Erreur d'envoi d'email: ${emailError.message}`);
+      }
+    }
+    const mappedError = errorMapping[emailError.code] || {
+      type: "UNKNOW_ERROR",
+      message: `Erreur d'envoie d'email: ${emailError.message}`,
+    };
+
+    await logEmailError(userId, mappedError.type, mappedError.message);
+
+    const recentErrors = await EmailError.countDocuments({
+      userId,
+      timestamps: { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
     });
 
-    return result;
+    if (recentErrors >= 3) {
+      await notifyAdmin({
+        type: "MULTIPLE_EMAIL_ERRORS",
+        userId: userId,
+        email,
+        email,
+        errorType: mappedError.type,
+        errorCount: recentErrors,
+      });
+    }
+    throw new Error(mappedError.message);
   } catch (error) {
     console.error(
       "Erreur lors de l'envoi de l'email de vérification:",

@@ -44,6 +44,22 @@ const userSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    verificationAttemps: {
+      type: Number,
+      default: 0,
+      max: 5,
+    },
+    lastVerificationAttempt: {
+      type: Date,
+      default: null,
+    },
+    verificationAttempsReset: {
+      type: Date,
+    },
+    emailDelay: {
+      type: Number,
+      default: 0,
+    },
     isAdmin: {
       type: Boolean,
       default: false,
@@ -55,6 +71,33 @@ const userSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+const errorEmailSchema = new mongoose.Schema({
+  userId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User",
+    required: true,
+  },
+  errorType: {
+    type: String,
+    enum: [
+      "AUTH ERROR",
+      "INVALID EMAIL",
+      "CONNCTION_ERROR",
+      "MESSAGE_CONSTRUCTOR_ERROR",
+      "OTHER_ERROR",
+    ],
+    required: true,
+  },
+  errorMessage: {
+    type: String,
+    required: true,
+  },
+  timestamps: {
+    type: Date,
+    default: Date.now,
+  },
+});
 
 // Middleware : Hash du mot de passe avant sauvegarde
 userSchema.pre("save", async function (next) {
@@ -86,6 +129,58 @@ userSchema.methods.getResetPasswordToken = function () {
   return resetToken;
 };
 
+// middleware pour renitialiser les tentives apres 24h
+userSchema.methods.resetVerificationAttempts = function () {
+  const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+
+  if (
+    !this.verificationAttemptsReset ||
+    this.verificationAttemptsReset < twentyFourHoursAgo
+  ) {
+    this.verificationAttempts = 0;
+    this.verificationAttemptsReset = new Date();
+  }
+};
+
+// methode pour calculer le delai de backoff expontiel
+userSchema.methods.calculateBackOffDelay = function () {
+  const baseDelay = 5;
+  const attempts = this.verificationAttemps;
+
+  return Math.pow(baseDelay, attempts + 1);
+};
+
+// methode pour verifier si l'user peut s'envoyer des mails
+userSchema.methods.canSendEmail = function () {
+  if (this.verificationAttempts === 0) return true;
+
+  // Vérifiez si lastVerificationAttempt existe
+  if (!this.lastVerificationAttempt) {
+    return true;
+  }
+
+  const lastAttempts = this.lastVerificationAttempt;
+  const delayMinute = this.calculateBackOffDelay();
+  const nextAllowedTime = new Date(lastAttempts.getTime() + delayMinute * 6000);
+  return nextAllowedTime <= new Date();
+};
+
+// middleware pour renitialiser les tentatives et le delai
+userSchema.methods.restVerificationProcess = function () {
+  const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+
+  if (
+    !this.verificationAttemptsReset ||
+    this.verificationAttemptsReset < twentyFourHoursAgo
+  ) {
+    this.verificationAttempts = 0;
+    this.emailDelay = 0;
+    this.verificationAttemptsReset = new Date();
+  }
+};
+
 const User = mongoose.model("User", userSchema);
+const EmailError = mongoose.model("EmailError", errorEmailSchema);
 
 export default User;
+export { EmailError };

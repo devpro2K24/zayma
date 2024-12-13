@@ -45,16 +45,22 @@ const notifyUnverifiedUsers = () => {
               </a>
               <p>Si vous n'êtes pas à l'origine de cette demande, vous pouvez ignorer cet email.</p>
               <p>Merci,</p>
-              <p>L'équipe Conteo</p>
+              <p>L'équipe Zeyma</p>
             `,
           });
 
           console.log(`Email envoyé à ${user.email}`);
         } catch (emailError) {
-          console.error(
-            `Erreur d'envoi d'email pour ${user.email}:`,
-            emailError
-          );
+          if (emailError.message.includes("Nombre maximal de tentatives")) {
+            console.warn(
+              `Limite de tentatives atteinte pour l'utilisateur ${user.email}`
+            );
+          } else {
+            console.error(
+              `Erreur d'email pour ${user.email}:`,
+              emailError.message
+            );
+          }
         }
       }
 
