@@ -4,6 +4,15 @@
   "description": "Ecommerce Marketplace",
   "main": "backend/server.js",
   "type": "module",
+  "jest": {
+    "transform": {
+      "^.+\\.js$": "babel-jest"
+    },
+    "transformIgnorePatterns": [
+      "node_modules/(?!axios)/"
+    ],
+    "preset": "@shelf/jest-mongodb"
+  },
   "scripts": {
     "test": "jest",
     "dev": "nodemon /backend/server.js"
@@ -42,5 +51,12 @@
     "socket.io": "^4.8.1",
     "supertest": "^7.0.0",
     "winston": "^3.17.0"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.26.0",
+    "@babel/plugin-transform-modules-commonjs": "^7.26.3",
+    "@babel/preset-env": "^7.26.0",
+    "@shelf/jest-mongodb": "^4.3.2",
+    "babel-jest": "^29.7.0"
   }
 }
