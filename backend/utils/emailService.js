@@ -184,41 +184,52 @@ export const sendVerificationEmail = async (emailData) => {
       return result;
     } catch (emailError) {
       // Gestion des erreurs spécifiques à l'envoi d'email
-      if (emailError.code === "EAUTH") {
-        throw new Error("Erreur d'authentification du serveur email.");
-      } else if (emailError.code === "EENVELOPE") {
-        throw new Error("Adresse email invalide ou boîte de réception pleine.");
-      } else if (emailError.code === "EMESSAGE") {
-        throw new Error("Erreur lors de la construction du message email.");
-      } else if (emailError.code === "ECONNECTION") {
-        throw new Error("Problème de connexion au serveur email.");
-      } else {
-        throw new Error(`Erreur d'envoi d'email: ${emailError.message}`);
-      }
-    }
-    const mappedError = errorMapping[emailError.code] || {
-      type: "UNKNOW_ERROR",
-      message: `Erreur d'envoie d'email: ${emailError.message}`,
-    };
+      const errorMapping = {
+        EAUTH: {
+          type: "AUTH_ERROR",
+          message: "Erreur d'authentification du serveur email.",
+        },
+        EENVELOPE: {
+          type: "INVALID_EMAIL",
+          message: "Adresse email invalide ou boîte de réception pleine.",
+        },
+        EMESSAGE: {
+          type: "MESSAGE_ERROR",
+          message: "Erreur lors de la construction du message email.",
+        },
+        ECONNECTION: {
+          type: "CONNECTION_ERROR",
+          message: "Problème de connexion au serveur email.",
+        },
+      };
 
-    await logEmailError(userId, mappedError.type, mappedError.message);
+      const mappedError = errorMapping[emailError.code] || {
+        type: "UNKNOWN_ERROR",
+        message: `Erreur d'envoi d'email: ${emailError.message}`,
+      };
 
-    const recentErrors = await EmailError.countDocuments({
-      userId,
-      timestamps: { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
-    });
+      // Enregistrer l'erreur
+      await logEmailError(userId, mappedError.type, mappedError.message);
 
-    if (recentErrors >= 3) {
-      await notifyAdmin({
-        type: "MULTIPLE_EMAIL_ERRORS",
-        userId: userId,
-        email,
-        email,
-        errorType: mappedError.type,
-        errorCount: recentErrors,
+      // Vérifier les erreurs récentes pour ce utilisateur
+      const recentErrors = await EmailError.countDocuments({
+        userId,
+        timestamps: { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
       });
+
+      // Notifier l'admin si nécessaire
+      if (recentErrors >= 3) {
+        await notifyAdmin({
+          type: "MULTIPLE_EMAIL_ERRORS",
+          userId: userId,
+          email,
+          errorType: mappedError.type,
+          errorCount: recentErrors,
+        });
+      }
+
+      throw new Error(mappedError.message);
     }
-    throw new Error(mappedError.message);
   } catch (error) {
     console.error(
       "Erreur lors de l'envoi de l'email de vérification:",
