@@ -27,6 +27,7 @@
     "react-hook-form": "^7.54.1",
     "react-i18next": "^15.2.0",
     "react-redux": "^9.2.0",
+    "sass": "^1.83.0",
     "style-loader": "^4.0.0",
     "zod": "^3.24.1"
   },
